@@ -307,6 +307,13 @@ trait ZStream[-R, +E, +A] extends Serializable { self =>
   }
 
   /**
+    * Effectfully maps each element to a chunk, and flattens the chunks into
+    * the output of this stream.
+    */
+  def mapConcatM[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, Chunk[B]]): ZStream[R1, E1, B] =
+    mapM(f).mapConcat(identity)
+
+  /**
    * Maps over elements of the stream with the specified effectful function.
    */
   final def mapM[R1 <: R, E1 >: E, B](f: A => ZIO[R1, E1, B]): ZStream[R1, E1, B] = new ZStream[R1, E1, B] {
@@ -522,6 +529,21 @@ trait ZStream[-R, +E, +A] extends Serializable { self =>
         }
       }
     }
+
+  /**
+   * Runs the stream and collects all of its elements in a list.
+   *
+   * Equivalent to `run(Sink.collect[A])`.
+   */
+  def runCollect: ZIO[R, E, List[A]] = run(Sink.collect[A])
+
+  /**
+   * Runs the stream purely for its effects. Any elements emitted by
+   * the stream are discarded.
+   *
+   * Equivalent to `run(Sink.drain)`.
+   */
+  def runDrain: ZIO[R, E, Unit] = run(Sink.drain)
 
   /**
    * Statefully maps over the elements of this stream to produce new elements.

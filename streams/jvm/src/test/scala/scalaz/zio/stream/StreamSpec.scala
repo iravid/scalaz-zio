@@ -16,11 +16,22 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv)
   import ArbitraryChunk._
 
   def is = "StreamSpec".title ^ s2"""
-  Stream.filter             $filter
-  Stream.dropWhile          $dropWhile
+  Stream.filter
+    filter            $filter
+    short circuits #1 $filterShortCircuiting1
+    short circuits #2 $filterShortCircuiting2
+
+  Stream.filterM
+    filterM           $filterM
+    short circuits #1 $filterMShortCircuiting1
+    short circuits #2 $filterMShortCircuiting2
+
+  Stream.dropWhile
+    dropWhile         $dropWhile
+    short circuits    $dropWhileShortCircuiting
+
   Stream.map                $map
   Stream.mapConcat          $mapConcat
-  Stream.filterM            $filterM
   Stream.mapAccum           $mapAccum
   Stream.++                 $concat
   Stream.unfold             $unfold
@@ -105,14 +116,60 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv)
       slurp(s.filter(p)) must_=== slurp(s).map(_.filter(p))
     }
 
+  private def filterShortCircuiting1 = unsafeRun {
+    (Stream(1) ++ Stream.fail("Ouch"))
+      .filter(_ => true)
+      .take(1)
+      .runDrain
+      .either
+      .map(_ must beRight(()))
+  }
+
+  private def filterShortCircuiting2 = unsafeRun {
+    (Stream(1) ++ Stream.fail("Ouch"))
+      .take(1)
+      .filter(_ => true)
+      .runDrain
+      .either
+      .map(_ must beRight(()))
+  }
+
   private def filterM =
     prop { (s: Stream[String, Byte], p: Byte => Boolean) =>
       slurp(s.filterM(s => IO.succeed(p(s)))) must_=== slurp(s).map(_.filter(p))
     }
 
+  private def filterMShortCircuiting1 = unsafeRun {
+    (Stream(1) ++ Stream.fail("Ouch"))
+      .take(1)
+      .filterM(_ => UIO.succeed(true))
+      .runDrain
+      .either
+      .map(_ must beRight(()))
+  }
+
+  private def filterMShortCircuiting2 = unsafeRun {
+    (Stream(1) ++ Stream.fail("Ouch"))
+      .filterM(_ => UIO.succeed(true))
+      .take(1)
+      .runDrain
+      .either
+      .map(_ must beRight(()))
+  }
+
   private def dropWhile =
     prop { (s: Stream[String, Byte], p: Byte => Boolean) =>
       slurp(s.dropWhile(p)) must_=== slurp(s).map(_.dropWhile(p))
+    }
+
+  private def dropWhileShortCircuiting =
+    unsafeRun {
+      (Stream(1) ++ Stream.fail("Ouch"))
+        .take(1)
+        .dropWhile(_ => true)
+        .runDrain
+        .either
+        .map(_ must beRight(()))
     }
 
   private def takeWhile =
@@ -124,12 +181,11 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv)
 
   private def takeWhileShortCircuits =
     unsafeRun(
-      for {
-        ran    <- Ref.make(false)
-        stream = (Stream(1) ++ Stream.fromEffect(ran.set(true)).drain).takeWhile(_ => false)
-        _      <- stream.run(Sink.drain)
-        result <- ran.get
-      } yield result must_=== false
+      (Stream(1) ++ Stream.fail("Ouch"))
+        .takeWhile(_ => false)
+        .runDrain
+        .either
+        .map(_ must beRight(()))
     )
 
   private def collectWhile = {
@@ -138,14 +194,12 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv)
   }
 
   private def collectWhileShortCircuits =
-    unsafeRun(
-      for {
-        ran    <- Ref.make(false)
-        stream = (Stream(Option(1)) ++ Stream.fromEffect(ran.set(true)).drain).collectWhile { case None => 1 }
-        _      <- stream.run(Sink.drain)
-        result <- ran.get
-      } yield result must_=== false
-    )
+    unsafeRun {
+      (Stream(Option(1)) ++ Stream.fail("Ouch")).collectWhile {
+        case None => 1
+      }.runDrain.either
+        .map(_ must beRight(()))
+    }
 
   private def map =
     prop { (s: Stream[String, Byte], f: Byte => Int) =>
