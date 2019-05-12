@@ -2,7 +2,7 @@ package scalaz.zio
 
 package object stream {
 
-  type Stream[+E, +A] = ZStream[Any, E, A]
+  type Stream[+EC, +EP, +A] = ZStream[Any, EC, EP, A]
 
   type StreamChunk[+E, +A] = ZStreamChunk[Any, E, A]
   val StreamChunk = ZStreamChunk

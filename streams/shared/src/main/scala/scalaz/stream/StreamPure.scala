@@ -18,7 +18,7 @@ package scalaz.zio.stream
 
 import scalaz.zio._
 
-private[stream] trait StreamPure[+A] extends ZStream[Any, Nothing, A] { self =>
+private[stream] trait StreamPure[+A] extends ZStream[Any, Any, Nothing, A] { self =>
   def foldPureLazy[A1 >: A, S](s: S)(cont: S => Boolean)(f: (S, A1) => S): S
 
   override def foldLeft[A1 >: A, S](s: S)(f: (S, A1) => S): UIO[S] =
