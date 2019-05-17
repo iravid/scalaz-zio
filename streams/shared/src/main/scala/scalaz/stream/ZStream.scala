@@ -21,6 +21,54 @@ import scalaz.zio.clock.Clock
 
 import scala.annotation.implicitNotFound
 
+object Stream2 {
+  def managed[R, E, A, B](m: ZManaged[R, E, A])(read: A => ZIO[R, E, Option[B]]): Stream2[R, E, B] =
+    new Stream2[R, E, B] {
+      def fold[R1 <: R, E1 >: E, B1 >: B, S, S2](
+        s: S
+      )(cont: S => Boolean)(fin: S => ZIO[R1, E1, S2])(f: (S, B1) => ZIO[R1, E1, S]): ZIO[R1, E1, S2] =
+        if (!cont(s)) fin(s)
+        else
+          m use { a =>
+            def loop(s: S): ZIO[R1, E1, S] =
+              if (!cont(s)) ZIO.succeed(s)
+              else
+                read(a).flatMap {
+                  case Some(b) => f(s, b).flatMap(loop)
+                  case None    => ZIO.succeed(s)
+                }
+
+            loop(s).flatMap(fin)
+          }
+    }
+}
+
+trait Stream2[-R, +E, +A] { self =>
+  def fold[R1 <: R, E1 >: E, A1 >: A, S, S2](s: S)(cont: S => Boolean)(fin: S => ZIO[R1, E1, S2])(
+    f: (S, A1) => ZIO[R1, E1, S]
+  ): ZIO[R1, E1, S2]
+
+  def map[B](f0: A => B): Stream2[R, E, B] =
+    new Stream2[R, E, B] {
+      def fold[R1 <: R, E1 >: E, B1 >: B, S, S2](
+        s: S
+      )(cont: S => Boolean)(fin: S => ZIO[R1, E1, S2])(f: (S, B1) => ZIO[R1, E1, S]): ZIO[R1, E1, S2] =
+        self.fold[R1, E1, A, S, S2](s)(cont)(fin) { (s, a) =>
+          f(s, f0(a))
+        }
+    }
+
+  def flatMap[R1 <: R, E1 >: E, B](f0: A => Stream2[R1, E1, B]): Stream2[R1, E1, B] =
+    new Stream2[R1, E1, B] {
+      def fold[R2 <: R1, E2 >: E1, B1 >: B, S, S2](s: S)(cont: S => Boolean)(fin: S => ZIO[R2, E2, S2])(
+        f: (S, B1) => ZIO[R2, E2, S]
+      ): ZIO[R2, E2, S2] =
+        self.fold[R2, E2, A, S, S2](s)(cont)(fin) { (s, a) =>
+          f0(a).fold[R2, E2, B1, S, S](s)(cont)(ZIO.succeed)(f)
+        }
+    }
+}
+
 /**
  * A `Stream[E, A]` represents an effectful stream that can produce values of
  * type `A`, or potentially fail with a value of type `E`.
