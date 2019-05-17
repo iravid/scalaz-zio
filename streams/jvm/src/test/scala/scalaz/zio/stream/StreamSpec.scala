@@ -62,6 +62,7 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv)
     short circuiting            $flatMapParShortCircuiting
     interruption propagation    $flatMapParInterruptionPropagation
     errors interrupt all fibers $flatMapParErrorsInterruptAllFibers
+    outer ends after inners     $flatMapParOuterEndsAfterInners
 
   Stream bracketing
     bracket                              $bracket
@@ -334,6 +335,25 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv)
                  .either
       cancelled <- substreamCancelled.get
     } yield (cancelled must_=== true) and (result must beLeft("Ouch"))
+  }
+
+  private def flatMapParOuterEndsAfterInners = unsafeRun {
+    for {
+      resourceOrder <- Ref.make(List[String]())
+      _ <- Stream.bracket(Ref.make[Boolean](false) <* resourceOrder.update("OuterAcquire" :: _))(
+            _ => resourceOrder.update("OuterRelease" :: _).unit
+          ) { ref =>
+            ref.modify { done =>
+              if (!done) (Some(Chunk(1, 2, 3)), true)
+              else (None, true)
+            }
+      }.mapConcat(identity).flatMapPar(3) { i =>
+        (Stream.fromEffect(resourceOrder.update(s"Inner${i}Acquire" :: _)) ++
+          Stream.fromEffect(resourceOrder.update(s"Inner${i}Release" :: _))).drain
+      }.run(Sink.drain)
+      order <- resourceOrder.get.map(_.reverse)
+      _ <- UIO(println(order))
+    } yield (order.head must_=== "OuterAcquire") and (order.last must_=== "OuterRelease")
   }
 
   private def forever = {
