@@ -46,14 +46,19 @@ final class RefM[A] private (value: Ref[A], queue: Queue[RefM.Bundle[_, A, _]]) 
    */
   final def modify[R, E, B](f: A => ZIO[R, E, (B, A)]): ZIO[R, E, B] =
     for {
-      promise <- Promise.make[E, B]
-      ref     <- Ref.make[Option[Cause[Nothing]]](None)
-      env     <- ZIO.environment[R]
-      bundle  = RefM.Bundle(ref, f.andThen(_.provide(env)), promise)
-      b <- (for {
-            _ <- queue.offer(bundle)
-            b <- promise.await
-          } yield b).onTermination(cause => bundle.interrupted.set(Some(cause)))
+      updateResult <- Promise.make[E, B]
+      interrupt    <- Promise.make[Nothing, Nothing]
+      env          <- ZIO.environment[R]
+      bundle       = RefM.Bundle(f.andThen(_.provide(env)), updateResult, interrupt)
+      b <- ZIO.uninterruptibleMask { restore =>
+            for {
+              _ <- queue.offer(bundle)
+              b <- restore(updateResult.await).run
+              result <- if (b.fold(_.interrupted, _ => false))
+                         interrupt.interrupt *> updateResult.await.ignore *> ZIO.interrupt
+                       else ZIO.done(b)
+            } yield result
+          }
     } yield b
 
   /**
@@ -64,18 +69,18 @@ final class RefM[A] private (value: Ref[A], queue: Queue[RefM.Bundle[_, A, _]]) 
    */
   final def modifySome[R, E, B](default: B)(pf: PartialFunction[A, ZIO[R, E, (B, A)]]): ZIO[R, E, B] =
     for {
-      promise <- Promise.make[E, B]
-      ref     <- Ref.make[Option[Cause[Nothing]]](None)
-      env     <- ZIO.environment[R]
+      updateResult <- Promise.make[E, B]
+      interrupt    <- Promise.make[Nothing, Nothing]
+      env          <- ZIO.environment[R]
       bundle = RefM.Bundle[E, A, B](
-        ref,
         pf.andThen(_.provide(env)).orElse[A, IO[E, (B, A)]] { case a => IO.succeed(default -> a) },
-        promise
+        updateResult,
+        interrupt
       )
       b <- (for {
             _ <- queue.offer(bundle)
-            b <- promise.await
-          } yield b).onTermination(cause => bundle.interrupted.set(Some(cause)))
+            b <- updateResult.await
+          } yield b).onTermination(interrupt.halt(_) <* updateResult.await.ignore)
     } yield b
 
   /**
@@ -107,18 +112,19 @@ final class RefM[A] private (value: Ref[A], queue: Queue[RefM.Bundle[_, A, _]]) 
 
 object RefM extends Serializable {
   private[RefM] final case class Bundle[E, A, B](
-    interrupted: Ref[Option[Cause[Nothing]]],
     update: A => IO[E, (B, A)],
-    promise: Promise[E, B]
+    updateResult: Promise[E, B],
+    interruptionSignal: Promise[Nothing, Nothing]
   ) {
+
     final def run(a: A, ref: Ref[A], onDefect: Cause[E] => UIO[Unit]): UIO[Unit] =
-      interrupted.get.flatMap {
-        case Some(cause) => onDefect(cause)
-        case None =>
-          update(a).foldM(e => onDefect(Cause.fail(e)) <* promise.fail(e), {
-            case (b, a) => ref.set(a) <* promise.succeed(b)
-          })
-      }
+      (update(a) raceAttempt interruptionSignal.await)
+        .foldCauseM(
+          c => onDefect(c) <* updateResult.halt(c), {
+            case (b, a) =>
+              ref.set(a) <* updateResult.succeed(b)
+          }
+        )
   }
 
   /**
