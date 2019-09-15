@@ -196,30 +196,39 @@ trait ZSink[-R, +E, A, +B] { self =>
     p: A => Boolean
   )(z: S)(f: (S, B) => S): ZSink[R, E, A, S] =
     new ZSink[R, E, A, S] {
-      type State = (S, self.State, Boolean, Chunk[A])
+      case class State(
+        s: S,
+        selfS: self.State,
+        predicateViolated: Boolean,
+        leftovers: Chunk[A],
+        dirty: Boolean
+      )
 
-      val initial = self.initial.map(s => (z, s, true, Chunk.empty))
+      val initial = self.initial.map(State(z, _, false, Chunk.empty, false))
 
       def step(state: State, a: A) =
         if (!p(a))
-          self.extract(state._2).map {
-            case (b, leftover) =>
-              (f(state._1, b), state._2, false, leftover ++ Chunk.single(a))
-          } else
-          self.step(state._2, a).flatMap { s1 =>
-            if (self.cont(s1)) UIO.succeed((state._1, s1, true, Chunk.empty))
-            else
-              self.extract(s1).flatMap {
-                case (b, as) =>
-                  self.initial.flatMap { init =>
-                    self.stepChunk(init, as).map(s2 => (f(state._1, b), s2, self.cont(s2), Chunk.empty))
-                  }
-              }
+          UIO.succeed(state.copy(predicateViolated = true, leftovers = state.leftovers ++ Chunk.single(a)))
+        else if (!self.cont(state.selfS))
+          for {
+            extractResult <- self.extract(state.selfS)
+            (b, as)       = extractResult
+            init          <- self.initial
+            stepResult    <- self.stepChunkSlice(init, state.leftovers ++ as ++ Chunk.single(a))
+            (s, leftover) = stepResult
+          } yield State(f(state.s, b), s, state.predicateViolated, leftover, true)
+        else
+          self.step(state.selfS, a).map(s2 => state.copy(selfS = s2, dirty = true))
+
+      def extract(state: State) =
+        if (!state.dirty) UIO.succeed((state.s, state.leftovers))
+        else
+          self.extract(state.selfS).map {
+            case (b, leftovers) =>
+              (f(state.s, b), leftovers ++ state.leftovers)
           }
 
-      def extract(state: State) = UIO.succeed((state._1, state._4))
-
-      def cont(state: State) = state._3
+      def cont(state: State) = !state.predicateViolated
     }
 
   /**
@@ -833,32 +842,40 @@ trait ZSink[-R, +E, A, +B] { self =>
   /**
    * Creates a sink that produces values until one verifies
    * the predicate `f`.
+   *
+   * @note The predicate is only verified when the underlying
+   * signals completion, or when the resulting sink is extracted.
+   * Sinks that never signal completion (e.g. [[ZSink.collectAll]])
+   * will not have the predicate applied to intermediate values.
    */
   final def untilOutput(f: B => Boolean): ZSink[R, E, A, Option[B]] =
     new ZSink[R, E, A, Option[B]] {
-      type State = (self.State, Option[B], Chunk[A])
+      type State = (self.State, Option[B], Chunk[A], Boolean)
 
-      val initial = self.initial.flatMap { s =>
-        self
-          .extract(s)
-          .fold(
-            _ => (s, None, Chunk.empty),
-            { case (b, leftover) => if (f(b)) (s, Some(b), leftover) else (s, None, Chunk.empty) }
-          )
-      }
+      val initial = self.initial.map((_, None, Chunk.empty, false))
 
       def step(state: State, a: A) =
-        self
-          .step(state._1, a)
-          .flatMap { s =>
-            self.extract(s).flatMap {
-              case (b, leftover) =>
-                if (f(b)) UIO.succeed((s, Some(b), leftover))
-                else UIO.succeed((s, None, Chunk.empty))
-            }
+        if (self.cont(state._1))
+          self.step(state._1, a)
+            .map((_, state._2, state._3, true))
+        else
+          self.extract(state._1).flatMap {
+            case (b, leftover) =>
+              if (f(b)) UIO.succeed((state._1, Some(b), leftover ++ Chunk.single(a), false))
+              else
+                for {
+                  init          <- self.initial
+                  stepResult    <- self.stepChunkSlice(init, leftover ++ Chunk.single(a))
+                  (s, leftover) = stepResult
+                } yield (s, None, leftover, leftover.notEmpty)
           }
 
-      def extract(state: State) = UIO.succeed((state._2, state._3))
+      def extract(state: State) =
+        if (!state._4 || state._2.nonEmpty) UIO.succeed((state._2, state._3))
+        else self.extract(state._1).map {
+          case (b, leftover) =>
+            (if (f(b)) Some(b) else None, leftover ++ state._3)
+        }
 
       def cont(state: State) = state._2.isEmpty
     }
