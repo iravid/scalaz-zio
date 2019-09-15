@@ -7,6 +7,6 @@ package object stream {
   type StreamChunk[+E, +A] = ZStreamChunk[Any, E, A]
   val StreamChunk = ZStreamChunk
 
-  type Sink[+E, +A0, -A, +B] = ZSink[Any, E, A0, A, B]
+  type Sink[+E, A, +B] = ZSink[Any, E, A, B]
 
 }

@@ -166,14 +166,14 @@ private[stream] class StreamEffect[+E, +A](val processEffect: Managed[E, () => A
       }
     }
 
-  override def run[R, E1 >: E, A0, A1 >: A, B](sink: ZSink[R, E1, A0, A1, B]): ZIO[R, E1, B] =
+  override def run[R, E1 >: E, A1 >: A, B](sink: ZSink[R, E1, A1, B]): ZIO[R, E1, B] =
     sink match {
-      case sink: SinkPure[E1, A0, A1, B] =>
+      case sink: SinkPure[E1, A1, B] =>
         foldLazyPure[sink.State](sink.initialPure)(sink.cont)(sink.stepPure).use[Any, E1, B] { state =>
           ZIO.fromEither(sink.extractPure(state).map(_._1))
         }
 
-      case sink: ZSink[R, E1, A0, A1, B] => super.run(sink)
+      case sink: ZSink[R, E1, A1, B] => super.run(sink)
     }
 
   override def take(n: Int): StreamEffect[E, A] =
@@ -207,10 +207,10 @@ private[stream] class StreamEffect[+E, +A](val processEffect: Managed[E, () => A
     }
 
   override def transduce[R, E1 >: E, A1 >: A, B](
-    sink: ZSink[R, E1, A1, A1, B]
+    sink: ZSink[R, E1, A1, B]
   ): ZStream[R, E1, B] =
     sink match {
-      case sink: SinkPure[E1, A1, A1, B] =>
+      case sink: SinkPure[E1, A1, B] =>
         StreamEffect[E1, B] {
 
           self.processEffect.flatMap { thunk =>
@@ -258,7 +258,7 @@ private[stream] class StreamEffect[+E, +A](val processEffect: Managed[E, () => A
             }
           }
         }
-      case sink: ZSink[R, E1, A1, A1, B] => super.transduce(sink)
+      case sink: ZSink[R, E1, A1, B] => super.transduce(sink)
     }
 }
 

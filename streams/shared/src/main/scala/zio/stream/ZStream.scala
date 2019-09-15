@@ -73,7 +73,7 @@ class ZStream[-R, +E, +A](val process: ZManaged[R, E, Pull[R, E, A]]) extends Se
    * Any sink can be used here, but see [[Sink.foldWeightedM]] and [[Sink.foldUntilM]] for
    * sinks that cover the common usecases.
    */
-  final def aggregate[R1 <: R, E1 >: E, A1 >: A, B](sink: ZSink[R1, E1, A1, A1, B]): ZStream[R1, E1, B] = {
+  final def aggregate[R1 <: R, E1 >: E, A1 >: A, B](sink: ZSink[R1, E1, A1, B]): ZStream[R1, E1, B] = {
     /*
      * How this works:
      *
@@ -251,7 +251,7 @@ class ZStream[-R, +E, +A](val process: ZManaged[R, E, Pull[R, E, A]]) extends Se
    * pulls.
    */
   final def aggregateWithin[R1 <: R, E1 >: E, A1 >: A, B, C](
-    sink: ZSink[R1, E1, A1, A1, B],
+    sink: ZSink[R1, E1, A1, B],
     schedule: ZSchedule[R1, Option[B], C]
   ): ZStream[R1 with Clock, E1, Either[C, B]] = {
     /*
@@ -1452,7 +1452,7 @@ class ZStream[-R, +E, +A](val process: ZManaged[R, E, Pull[R, E, A]]) extends Se
    * remainder is valid only within the scope of [[ZManaged]].
    */
   final def peel[R1 <: R, E1 >: E, A1 >: A, B](
-    sink: ZSink[R1, E1, A1, A1, B]
+    sink: ZSink[R1, E1, A1, B]
   ): ZManaged[R1, E1, (B, ZStream[R1, E1, A1])] =
     for {
       as <- self.process
@@ -1571,7 +1571,7 @@ class ZStream[-R, +E, +A](val process: ZManaged[R, E, Pull[R, E, A]]) extends Se
   /**
    * Runs the sink on the stream to produce either the sink's result or an error.
    */
-  def run[R1 <: R, E1 >: E, A0, A1 >: A, B](sink: ZSink[R1, E1, A0, A1, B]): ZIO[R1, E1, B] =
+  def run[R1 <: R, E1 >: E, A1 >: A, B](sink: ZSink[R1, E1, A1, B]): ZIO[R1, E1, B] =
     sink.initial.flatMap { initial =>
       self.process.use { as =>
         def pull(state: sink.State): ZIO[R1, E1, B] =
@@ -1851,7 +1851,7 @@ class ZStream[-R, +E, +A](val process: ZManaged[R, E, Pull[R, E, A]]) extends Se
    * managed resource of type `D` available.
    */
   final def transduceManaged[R1 <: R, E1 >: E, A1 >: A, B](
-    managedSink: ZManaged[R1, E1, ZSink[R1, E1, A1, A1, B]]
+    managedSink: ZManaged[R1, E1, ZSink[R1, E1, A1, B]]
   ): ZStream[R1, E1, B] =
     ZStream[R1, E1, B] {
       for {
@@ -1916,7 +1916,7 @@ class ZStream[-R, +E, +A](val process: ZManaged[R, E, Pull[R, E, A]]) extends Se
    * Applies a transducer to the stream, which converts one or more elements
    * of type `A` into elements of type `C`.
    */
-  def transduce[R1 <: R, E1 >: E, A1 >: A, C](sink: ZSink[R1, E1, A1, A1, C]): ZStream[R1, E1, C] =
+  def transduce[R1 <: R, E1 >: E, A1 >: A, C](sink: ZSink[R1, E1, A1, C]): ZStream[R1, E1, C] =
     transduceManaged[R1, E1, A1, C](ZManaged.succeed(sink))
 
   /**

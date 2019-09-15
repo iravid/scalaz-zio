@@ -18,58 +18,31 @@ package zio.stream
 
 import zio._
 
-private[stream] trait SinkPure[+E, +A0, -A, +B] extends ZSink[Any, E, A0, A, B] { self =>
-
-  override def contramap[C](f: C => A): SinkPure[E, A0, C, B] =
-    new SinkPure[E, A0, C, B] {
-      type State = self.State
-      val initialPure                  = self.initialPure
-      def stepPure(state: State, c: C) = self.stepPure(state, f(c))
-      def extractPure(state: State)    = self.extractPure(state)
-      def cont(state: State)           = self.cont(state)
-    }
-
-  override def dimap[C, D](f: C => A)(g: B => D): SinkPure[E, A0, C, D] =
-    new SinkPure[E, A0, C, D] {
-      type State = self.State
-      val initialPure                  = self.initialPure
-      def stepPure(state: State, c: C) = self.stepPure(state, f(c))
-      def extractPure(state: State)    = self.extractPure(state).map { case (b, leftover) => (g(b), leftover) }
-      def cont(state: State)           = self.cont(state)
-    }
+private[stream] trait SinkPure[+E, A, +B] extends ZSink[Any, E, A, B] { self =>
 
   def extract(state: State) = IO.fromEither(extractPure(state))
 
-  def extractPure(state: State): Either[E, (B, Chunk[A0])]
+  def extractPure(state: State): Either[E, (B, Chunk[A])]
 
-  override def filter[A1 <: A](f: A1 => Boolean): SinkPure[E, A0, A1, B] =
-    new SinkPure[E, A0, A1, B] {
+  override def filter(f: A => Boolean): SinkPure[E, A, B] =
+    new SinkPure[E, A, B] {
       type State = self.State
-      val initialPure                   = self.initialPure
-      def stepPure(state: State, a: A1) = if (f(a)) self.stepPure(state, a) else state
-      def extractPure(state: State)     = self.extractPure(state)
-      def cont(state: State)            = self.cont(state)
+      val initialPure                  = self.initialPure
+      def stepPure(state: State, a: A) = if (f(a)) self.stepPure(state, a) else state
+      def extractPure(state: State)    = self.extractPure(state)
+      def cont(state: State)           = self.cont(state)
     }
 
   def initial = IO.succeed(initialPure)
 
   def initialPure: State
 
-  override def map[C](f: B => C): SinkPure[E, A0, A, C] =
-    new SinkPure[E, A0, A, C] {
+  override def map[C](f: B => C): SinkPure[E, A, C] =
+    new SinkPure[E, A, C] {
       type State = self.State
       val initialPure                  = self.initialPure
       def stepPure(state: State, a: A) = self.stepPure(state, a)
       def extractPure(state: State)    = self.extractPure(state).map { case (b, leftover) => (f(b), leftover) }
-      def cont(state: State)           = self.cont(state)
-    }
-
-  override def mapRemainder[A1](f: A0 => A1): SinkPure[E, A1, A, B] =
-    new SinkPure[E, A1, A, B] {
-      type State = self.State
-      val initialPure                  = self.initialPure
-      def stepPure(state: State, a: A) = self.stepPure(state, a)
-      def extractPure(state: State)    = self.extractPure(state).map { case (b, leftover) => (b, leftover.map(f)) }
       def cont(state: State)           = self.cont(state)
     }
 
@@ -86,10 +59,10 @@ private[stream] trait SinkPure[+E, +A0, -A, +B] extends ZSink[Any, E, A0, A, B] 
     loop(state, 0)
   }
 
-  final def stepChunkSlicePure[A1 <: A](state: State, as: Chunk[A1]): (State, Chunk[A1]) = {
+  final def stepChunkSlicePure(state: State, as: Chunk[A]): (State, Chunk[A]) = {
     val len = as.length
 
-    def loop(state: State, i: Int): (State, Chunk[A1]) =
+    def loop(state: State, i: Int): (State, Chunk[A]) =
       if (i >= len) (state, Chunk.empty)
       else if (self.cont(state)) loop(stepPure(state, as(i)), i + 1)
       else (state, as.splitAt(i)._2)
