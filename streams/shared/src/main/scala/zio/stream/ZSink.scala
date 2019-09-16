@@ -173,13 +173,38 @@ trait ZSink[-R, +E, A, +B] { self =>
     collectAllWith[List[B]](List.empty[B])((bs, b) => b :: bs).map(_.reverse)
 
   final def collectAllN(i: Int): ZSink[R, E, A, List[B]] =
-    collectAllWith[(List[B], Int)]((Nil, 0)) {
-      case ((bs, len), b) =>
-        (b :: bs, len + 1)
-    }.untilOutput {
-      case (_, len) =>
-        len >= i
-    }.map(_.getOrElse((Nil, 0))._1.reverse)
+    new ZSink[R, E, A, List[B]] {
+      case class State(s: self.State, bs: List[B], n: Int, leftover: Chunk[A], dirty: Boolean)
+
+      val initial = self.initial.map(State(_, List(), 0, Chunk(), false))
+
+      def step(state: State, a: A) =
+        if (state.n >= i) UIO.succeed(state.copy(leftover = state.leftover ++ Chunk.single(a)))
+        else if (!self.cont(state.s))
+          for {
+            extractResult <- self.extract(state.s)
+            (b, as)       = extractResult
+            newState <- if (state.n + 1 < i)
+                         for {
+                           init          <- self.initial
+                           stepResult    <- self.stepChunk(init, as ++ state.leftover ++ Chunk.single(a))
+                           (s, leftover) = stepResult
+                         } yield State(s, b :: state.bs, state.n + 1, leftover, true)
+                       else
+                         self.initial.map(
+                           State(_, b :: state.bs, state.n + 1, as ++ state.leftover ++ Chunk.single(a), false)
+                         )
+          } yield newState
+        else self.step(state.s, a).map(s2 => state.copy(s = s2, dirty = true))
+
+      def extract(state: State) =
+        if (state.dirty && state.n < i)
+          self.extract(state.s).map {
+            case (b, leftover) => ((b :: state.bs).reverse, leftover ++ state.leftover)
+          } else UIO.succeed((state.bs.reverse, state.leftover))
+
+      def cont(state: State) = state.n >= i
+    }
 
   final def collectAllWith[S](
     z: S

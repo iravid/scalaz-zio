@@ -441,12 +441,12 @@ class SinkSpec(implicit ee: org.specs2.concurrent.ExecutionEnv) extends TestRunt
     val sink = ZSink.ignoreWhile[Int](_ < 5).collectAll
     val test = for {
       result <- sink.initial
-            .flatMap(sink.step(_, 1))
-            .flatMap(sink.step(_, 2))
-            .flatMap(sink.step(_, 3))
-            .flatMap(sink.step(_, 5))
-            .flatMap(sink.step(_, 6))
-            .flatMap(sink.extract)
+                 .flatMap(sink.step(_, 1))
+                 .flatMap(sink.step(_, 2))
+                 .flatMap(sink.step(_, 3))
+                 .flatMap(sink.step(_, 5))
+                 .flatMap(sink.step(_, 6))
+                 .flatMap(sink.extract)
     } yield result must_=== (List((), ()) -> Chunk(5, 6))
 
     unsafeRun(test)
@@ -455,12 +455,13 @@ class SinkSpec(implicit ee: org.specs2.concurrent.ExecutionEnv) extends TestRunt
   private def collectAllNHappyPath = {
     val sink = ZSink.identity[Int].collectAllN(3)
     val test = for {
-      init   <- sink.initial
-      step1  <- sink.step(init, 1)
-      step2  <- sink.step(step1, 2)
-      step3  <- sink.step(step2, 3)
-      result <- sink.extract(step3)
-    } yield result must_=== ((List(1, 2, 3), Chunk.empty))
+      result <- sink.initial
+                 .flatMap(sink.step(_, 1))
+                 .flatMap(sink.step(_, 2))
+                 .flatMap(sink.step(_, 3))
+                 .flatMap(sink.step(_, 4))
+                 .flatMap(sink.extract)
+    } yield result must_=== ((List(1, 2, 3), Chunk(4)))
     unsafeRun(test)
   }
 
