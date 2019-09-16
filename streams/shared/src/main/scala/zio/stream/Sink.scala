@@ -79,13 +79,13 @@ object Sink {
   /**
    * see [[ZSink.die]]
    */
-  final def die(e: Throwable): Sink[Nothing, Any, Nothing] =
+  final def die[A](e: Throwable): Sink[Nothing, A, Nothing] =
     ZSink.die(e)
 
   /**
    * see [[ZSink.dieMessage]]
    */
-  final def dieMessage(m: String): Sink[Nothing, Any, Nothing] =
+  final def dieMessage[A](m: String): Sink[Nothing, A, Nothing] =
     ZSink.dieMessage(m)
 
   /**
@@ -97,7 +97,7 @@ object Sink {
   /**
    * see [[ZSink.fail]]
    */
-  final def fail[E](e: E): Sink[E, Any, Nothing] =
+  final def fail[A, E](e: E): Sink[E, A, Nothing] =
     ZSink.fail(e)
 
   /**
@@ -182,8 +182,8 @@ object Sink {
   /**
    * see [[ZSink.fromEffect]]
    */
-  final def fromEffect[E, B](b: => IO[E, B]): Sink[E, Any, B] =
-    ZSink.fromEffect(b)
+  final def fromEffect[A]: ZSink.FromEffectPartiallyApplied[A] =
+    ZSink.fromEffect[A]
 
   /**
    * see [[ZSink.fromFunction]]
@@ -194,7 +194,7 @@ object Sink {
   /**
    * see [[ZSink.halt]]
    */
-  final def halt[E](e: Cause[E]): Sink[E, Any, Nothing] =
+  final def halt[A, E](e: Cause[E]): Sink[E, A, Nothing] =
     ZSink.halt(e)
 
   /**

@@ -1050,14 +1050,14 @@ object ZSink extends ZSinkPlatformSpecific {
   /**
    * Creates a sink halting with the specified `Throwable`.
    */
-  final def die(e: Throwable): ZSink[Any, Nothing, Any, Nothing] =
+  final def die[A](e: Throwable): ZSink[Any, Nothing, A, Nothing] =
     ZSink.halt(Cause.die(e))
 
   /**
    * Creates a sink halting with the specified message, wrapped in a
    * `RuntimeException`.
    */
-  final def dieMessage(m: String): ZSink[Any, Nothing, Any, Nothing] =
+  final def dieMessage[A](m: String): ZSink[Any, Nothing, A, Nothing] =
     ZSink.halt(Cause.die(new RuntimeException(m)))
 
   /**
@@ -1263,16 +1263,24 @@ object ZSink extends ZSinkPlatformSpecific {
     foldWeighted[A, S](z)(_ => 1, max)(f)
 
   /**
-   * Creates a single-value sink produced from an effect
+   * Creates a single-value sink produced from an effect.
    */
-  final def fromEffect[R, E, B](b: => ZIO[R, E, B]): ZSink[R, E, Any, B] =
-    new ZSink[R, E, Any, B] {
-      type State = Unit
-      val initial                    = IO.succeed(())
-      def step(state: State, a: Any) = IO.succeed(())
-      def extract(state: State)      = b.map((_, Chunk.empty))
-      def cont(state: State)         = false
-    }
+  final def fromEffect[A]: FromEffectPartiallyApplied[A] =
+    new FromEffectPartiallyApplied[A]
+
+  /**
+   * A helper class that aids type inference in [[ZSink.fromEffect]].
+   */
+  class FromEffectPartiallyApplied[A] {
+    def apply[R, E, B](b: ZIO[R, E, B]): ZSink[R, E, A, B] =
+      new ZSink[R, E, A, B] {
+        type State = Unit
+        val initial                  = IO.succeed(())
+        def step(state: State, a: A) = IO.succeed(())
+        def extract(state: State)    = b.map((_, Chunk.empty))
+        def cont(state: State)       = false
+      }
+  }
 
   /**
    * Creates a sink that purely transforms incoming values.
@@ -1283,13 +1291,13 @@ object ZSink extends ZSinkPlatformSpecific {
   /**
    * Creates a sink halting with a specified cause.
    */
-  final def halt[E](e: Cause[E]): ZSink[Any, E, Any, Nothing] =
-    new ZSink[Any, E, Any, Nothing] {
+  final def halt[A, E](e: Cause[E]): ZSink[Any, E, A, Nothing] =
+    new ZSink[Any, E, A, Nothing] {
       type State = Unit
-      val initial                    = UIO.succeed(())
-      def step(state: State, a: Any) = UIO.succeed(())
-      def extract(state: State)      = IO.halt(e)
-      def cont(state: State)         = false
+      val initial                  = UIO.succeed(())
+      def step(state: State, a: A) = UIO.succeed(())
+      def extract(state: State)    = IO.halt(e)
+      def cont(state: State)       = false
     }
 
   /**

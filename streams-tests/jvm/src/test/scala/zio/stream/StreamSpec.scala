@@ -302,7 +302,7 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv) extends TestRu
     for {
       latch     <- Promise.make[Nothing, Unit]
       cancelled <- Ref.make(false)
-      sink = Sink.fromEffect {
+      sink = Sink.fromEffect[Int] {
         (latch.succeed(()) *> UIO.never)
           .onInterrupt(cancelled.set(true))
       }
@@ -390,7 +390,7 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv) extends TestRu
     for {
       latch     <- Promise.make[Nothing, Unit]
       cancelled <- Ref.make(false)
-      sink = Sink.fromEffect {
+      sink = Sink.fromEffect[Int] {
         (latch.succeed(()) *> UIO.never)
           .onInterrupt(cancelled.set(true))
       }
