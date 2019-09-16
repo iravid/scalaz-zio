@@ -845,7 +845,7 @@ trait ZSink[-R, +E, A, +B] { self =>
 
       def extract(state: State) = self.extract(state._1).map { case (b, leftover) => (b, leftover ++ state._2) }
 
-      def cont(state: State) = self.cont(state._1)
+      def cont(state: State) = state._2.isEmpty && self.cont(state._1)
     }
 
   /**
