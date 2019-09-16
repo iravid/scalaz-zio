@@ -86,9 +86,9 @@ trait ZSink[-R, +E, A, +B] { self =>
     (self orElse that).map(_.merge)
 
   /**
-    * Operator alias for [[ZSink#optional]].
-    */
-  final def ? : ZSink[R, Nothing, A, Option[B]]= optional
+   * Operator alias for [[ZSink#optional]].
+   */
+  final def ? : ZSink[R, Nothing, A, Option[B]] = optional
 
   /**
    * A named alias for `race`.
@@ -109,10 +109,10 @@ trait ZSink[-R, +E, A, +B] { self =>
   final def asError[E1](e1: E1): ZSink[R, E1, A, B] = self.mapError(_ => e1)
 
   /**
-    * Lifts this sink to be chunked in its input. This will not
-    * improve  performance, but can be used to adapt non-chunked sinks
-    * wherever chunked sinks are required.
-    */
+   * Lifts this sink to be chunked in its input. This will not
+   * improve  performance, but can be used to adapt non-chunked sinks
+   * wherever chunked sinks are required.
+   */
   final def chunked: ZSink[R, E, Chunk[A], B] =
     new ZSink[R, E, Chunk[A], B] {
       type State = (self.State, Chunk[A])
@@ -124,14 +124,14 @@ trait ZSink[-R, +E, A, +B] { self =>
     }
 
   /**
-    * Repeatedly runs this sink and accumulates its outputs to a list.
-    */
+   * Repeatedly runs this sink and accumulates its outputs to a list.
+   */
   final def collectAll: ZSink[R, E, A, List[B]] =
-    collectAllWith[List[B]](List.empty[B])((bs, b) => b :: bs).map(_.reverse)
+    collectAllWith(List[B]())((bs, b) => b :: bs).map(_.reverse)
 
   /**
-    * Repeatedly runs this sink until `i` outputs have been accumulated.
-    */
+   * Repeatedly runs this sink until `i` outputs have been accumulated.
+   */
   final def collectAllN(i: Int): ZSink[R, E, A, List[B]] =
     new ZSink[R, E, A, List[B]] {
       case class State(s: self.State, bs: List[B], n: Int, leftover: Chunk[A], dirty: Boolean)
@@ -167,18 +167,18 @@ trait ZSink[-R, +E, A, +B] { self =>
     }
 
   /**
-    * Repeatedly runs this sink and accumulates the outputs into a value
-    * of type `S`.
-    */
+   * Repeatedly runs this sink and accumulates the outputs into a value
+   * of type `S`.
+   */
   final def collectAllWith[S](
     z: S
   )(f: (S, B) => S): ZSink[R, E, A, S] =
     collectAllWhileWith(_ => true)(z)(f)
 
   /**
-    * Repeatedly runs this sink and accumulates its outputs for as long
-    * as incoming values verify the predicate.
-    */
+   * Repeatedly runs this sink and accumulates its outputs for as long
+   * as incoming values verify the predicate.
+   */
   final def collectAllWhile(
     p: A => Boolean
   ): ZSink[R, E, A, List[B]] =
@@ -186,9 +186,9 @@ trait ZSink[-R, +E, A, +B] { self =>
       .map(_.reverse)
 
   /**
-    * Repeatedly runs this sink and accumulates its outputs into a value
-    * of type `S` for as long as the incoming values satisfy the predicate.
-    */
+   * Repeatedly runs this sink and accumulates its outputs into a value
+   * of type `S` for as long as the incoming values satisfy the predicate.
+   */
   final def collectAllWhileWith[S](
     p: A => Boolean
   )(z: S)(f: (S, B) => S): ZSink[R, E, A, S] =
@@ -427,6 +427,9 @@ trait ZSink[-R, +E, A, +B] { self =>
       def cont(state: State)       = self.cont(state)
     }
 
+  /**
+   * Adapts the input of this sink.
+   */
   final def mapInput[C](f: C => A)(g: A => C): ZSink[R, E, C, B] =
     new ZSink[R, E, C, B] {
       type State = self.State
@@ -438,6 +441,10 @@ trait ZSink[-R, +E, A, +B] { self =>
       def cont(state: State) = self.cont(state)
     }
 
+  /**
+   * Like [[ZSink#mapInput]], but allows adapting the inputs using
+   * an effectful function.
+   */
   final def mapInputM[R1 <: R, R2 <: R1, E1 >: E, E2 >: E1, C](
     f: C => ZIO[R1, E1, A]
   )(g: A => ZIO[R2, E2, C]): ZSink[R2, E2, C, B] =
@@ -464,10 +471,10 @@ trait ZSink[-R, +E, A, +B] { self =>
     }
 
   /**
-    * Returns a new sink that tries to produce the `B`, but if there is
-    * an error in stepping or extraction, produces `None`.
-    */
-  final def optional : ZSink[R, Nothing, A, Option[B]] =
+   * Returns a new sink that tries to produce the `B`, but if there is
+   * an error in stepping or extraction, produces `None`.
+   */
+  final def optional: ZSink[R, Nothing, A, Option[B]] =
     new ZSink[R, Nothing, A, Option[B]] {
       import ZSink.internal._
 
@@ -863,6 +870,10 @@ trait ZSink[-R, +E, A, +B] { self =>
       def cont(state: State) = self.cont(state._3)
     }
 
+  /**
+   * Stops processing elements incoming to the sink when an element
+   * that doesn't satisfy the predicate is encountered.
+   */
   final def takeWhile(pred: A => Boolean): ZSink[R, E, A, B] =
     new ZSink[R, E, A, B] {
       type State = (self.State, Chunk[A])
@@ -926,6 +937,9 @@ trait ZSink[-R, +E, A, +B] { self =>
       def cont(state: State) = state._2.isEmpty
     }
 
+  /**
+   * Sets the initial state of the sink to the provided state.
+   */
   final def update(state: State): ZSink[R, E, A, B] =
     new ZSink[R, E, A, B] {
       type State = self.State
@@ -977,14 +991,6 @@ object ZSink extends ZSinkPlatformSpecific {
       final case class Fail[A](as: Chunk[A]) extends Optional[Nothing, A]
     }
 
-    final case class SplitLines(
-      accumulatedLines: Chunk[String],
-      concat: Option[String],
-      wasSplitCRLF: Boolean,
-      cont: Boolean,
-      leftover: Chunk[String]
-    )
-
     def assertNonNegative(n: Long): UIO[Unit] =
       if (n < 0) UIO.die(new NegativeArgument(s"Unexpected negative unit value `$n`"))
       else UIO.unit
@@ -996,8 +1002,6 @@ object ZSink extends ZSinkPlatformSpecific {
     class NegativeArgument(message: String) extends IllegalArgumentException(message)
 
     class NonpositiveArgument(message: String) extends IllegalArgumentException(message)
-
-    case class FoldWeightedState[S, A](s: S, cost: Long, cont: Boolean, leftovers: Chunk[A])
   }
 
   /**
@@ -1182,11 +1186,9 @@ object ZSink extends ZSinkPlatformSpecific {
     decompose: A => ZIO[R, E, Chunk[A]]
   )(f: (S, A) => ZIO[R1, E1, S]): ZSink[R1, E1, A, S] =
     new ZSink[R1, E1, A, S] {
-      import internal.FoldWeightedState
+      case class State(s: S, cost: Long, cont: Boolean, leftovers: Chunk[A])
 
-      type State = FoldWeightedState[S, A]
-
-      val initial = UIO.succeed(FoldWeightedState[S, A](z, 0L, true, Chunk.empty))
+      val initial = UIO.succeed(State(z, 0L, true, Chunk.empty))
 
       def step(state: State, a: A) =
         costFn(a).flatMap { cost =>
@@ -1195,9 +1197,9 @@ object ZSink extends ZSinkPlatformSpecific {
           if (newCost > max)
             decompose(a).map(leftovers => state.copy(cont = false, leftovers = state.leftovers ++ leftovers))
           else if (newCost == max)
-            f(state.s, a).map(FoldWeightedState(_, newCost, false, Chunk.empty))
+            f(state.s, a).map(State(_, newCost, false, Chunk.empty))
           else
-            f(state.s, a).map(FoldWeightedState(_, newCost, true, Chunk.empty))
+            f(state.s, a).map(State(_, newCost, true, Chunk.empty))
         }
 
       def extract(state: State) = UIO.succeed((state.s, state.leftovers))
@@ -1252,11 +1254,9 @@ object ZSink extends ZSinkPlatformSpecific {
     f: (S, A) => S
   ): ZSink[Any, Nothing, A, S] =
     new SinkPure[Nothing, A, S] {
-      import internal.FoldWeightedState
+      case class State(s: S, cost: Long, cont: Boolean, leftovers: Chunk[A])
 
-      type State = FoldWeightedState[S, A]
-
-      val initialPure = FoldWeightedState[S, A](z, 0L, true, Chunk.empty)
+      val initialPure = State(z, 0L, true, Chunk.empty)
 
       def stepPure(state: State, a: A) = {
         val newCost = costFn(a) + state.cost
@@ -1264,9 +1264,9 @@ object ZSink extends ZSinkPlatformSpecific {
         if (newCost > max)
           state.copy(cont = false, leftovers = state.leftovers ++ decompose(a))
         else if (newCost == max)
-          FoldWeightedState(f(state.s, a), newCost, false, Chunk.empty)
+          State(f(state.s, a), newCost, false, Chunk.empty)
         else
-          FoldWeightedState(f(state.s, a), newCost, true, Chunk.empty)
+          State(f(state.s, a), newCost, true, Chunk.empty)
       }
 
       def extractPure(state: State) = Right((state.s, state.leftovers))
@@ -1433,11 +1433,15 @@ object ZSink extends ZSinkPlatformSpecific {
    */
   final val splitLines: ZSink[Any, Nothing, String, Chunk[String]] =
     new SinkPure[Nothing, String, Chunk[String]] {
-      import ZSink.internal._
+      case class State(
+        accumulatedLines: Chunk[String],
+        concat: Option[String],
+        wasSplitCRLF: Boolean,
+        cont: Boolean,
+        leftover: Chunk[String]
+      )
 
-      type State = SplitLines
-
-      val initialPure = SplitLines(Chunk.empty, None, false, true, Chunk.empty)
+      val initialPure = State(Chunk.empty, None, false, true, Chunk.empty)
 
       override def stepPure(state: State, a: String) = {
         val accumulatedLines = state.accumulatedLines
@@ -1476,15 +1480,15 @@ object ZSink extends ZSinkPlatformSpecific {
             }
           }
 
-          if (buf.isEmpty) SplitLines(accumulatedLines, Some(concat), splitCRLF, true, Chunk.empty)
+          if (buf.isEmpty) State(accumulatedLines, Some(concat), splitCRLF, true, Chunk.empty)
           else {
             val newLines = Chunk.fromArray(buf.toArray[String])
             val leftover = concat.substring(sliceStart, concat.length)
 
-            if (splitCRLF) SplitLines(accumulatedLines ++ newLines, Some(leftover), splitCRLF, true, Chunk.empty)
+            if (splitCRLF) State(accumulatedLines ++ newLines, Some(leftover), splitCRLF, true, Chunk.empty)
             else {
               val remainder = if (leftover.nonEmpty) Chunk.single(leftover) else Chunk.empty
-              SplitLines(accumulatedLines ++ newLines, None, splitCRLF, false, remainder)
+              State(accumulatedLines ++ newLines, None, splitCRLF, false, remainder)
             }
           }
         }

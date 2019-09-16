@@ -563,7 +563,7 @@ object Chunk {
   /**
    * Returns the empty chunk.
    */
-  final val empty: Chunk[Nothing] = Empty
+  final def empty[A]: Chunk[A] = Empty
 
   /**
    * Returns a chunk from a number of values.
