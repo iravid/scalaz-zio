@@ -92,7 +92,7 @@ Sink.fromFunction[Int, Int](_ * 2).collectAll
 
 ```scala mdoc:silent
 Sink
-  .pull1[String, Int, Int](IO.fail("Empty stream, no value to pull")) { init =>
+  .pull1[String, Int, Int, Int](IO.fail("Empty stream, no value to pull")) { init =>
     Sink.foldLeft[Int, Int](init)(_ + _)
   }
 ```
@@ -115,7 +115,7 @@ One of them already appeared in previous section - `collectAll` in `pull1`.
 Sink that after collecting input - filters it:
 
 ```scala mdoc:silent
-Sink.collectAll[Int].filter(_ > 100)
+Sink.collectAll[Int].filter[Int](_ > 100)
 ```
 
 Running two sinks in parallel and returning the one that completed earlier:

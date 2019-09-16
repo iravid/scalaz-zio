@@ -270,7 +270,7 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv) extends TestRu
 
   def aggregateErrorPropagation2 = unsafeRun {
     val e = new RuntimeException("Boom")
-    val sink = Sink.foldM[Nothing, Int, List[Int]](List[Int]())(_ => true) { (_, _) =>
+    val sink = Sink.foldM[Nothing, Int, Int, List[Int]](List[Int]())(_ => true) { (_, _) =>
       ZIO.die(e)
     }
 
@@ -302,7 +302,7 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv) extends TestRu
     for {
       latch     <- Promise.make[Nothing, Unit]
       cancelled <- Ref.make(false)
-      sink = Sink.fromEffect[Int] {
+      sink = Sink.fromEffect {
         (latch.succeed(()) *> UIO.never)
           .onInterrupt(cancelled.set(true))
       }
@@ -358,7 +358,7 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv) extends TestRu
 
   private def aggregateWithinErrorPropagation2 = unsafeRun {
     val e = new RuntimeException("Boom")
-    val sink = Sink.foldM[Nothing, Int, List[Int]](List[Int]())(_ => true) { (_, _) =>
+    val sink = Sink.foldM[Nothing, Int, Int, List[Int]](List[Int]())(_ => true) { (_, _) =>
       ZIO.die(e)
     }
 
@@ -390,7 +390,7 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv) extends TestRu
     for {
       latch     <- Promise.make[Nothing, Unit]
       cancelled <- Ref.make(false)
-      sink = Sink.fromEffect[Int] {
+      sink = Sink.fromEffect {
         (latch.succeed(()) *> UIO.never)
           .onInterrupt(cancelled.set(true))
       }
@@ -1736,7 +1736,7 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv) extends TestRu
 
   private def transduceWithRemainder = unsafeRun {
     val sink = Sink
-      .fold[Int, (Int, Boolean)]((0, true))(_._2) { (s, a: Int) =>
+      .fold[Int, Int, (Int, Boolean)]((0, true))(_._2) { (s, a: Int) =>
         a match {
           case 1 => ((s._1 + 100, true), Chunk.empty)
           case 2 => ((s._1 + 100, true), Chunk.empty)
@@ -1755,7 +1755,7 @@ class StreamSpec(implicit ee: org.specs2.concurrent.ExecutionEnv) extends TestRu
   }
 
   private def transduceManaged = {
-    final class TestSink(ref: Ref[Int]) extends ZSink[Any, Throwable, Int, List[Int]] {
+    final class TestSink(ref: Ref[Int]) extends ZSink[Any, Throwable, Int, Int, List[Int]] {
       type State = (List[Int], Boolean)
 
       def extract(state: State) = UIO.succeed((state._1, Chunk.empty))

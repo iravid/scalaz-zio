@@ -239,7 +239,7 @@ class ZStreamChunk[-R, +E, @specialized +A](val chunks: ZStream[R, E, Chunk[A]])
   /**
    * Runs the sink on the stream to produce either the sink's result or an error.
    */
-  final def run[R1 <: R, E1 >: E, A1 >: A, B](sink: ZSink[R1, E1, Chunk[A1], B]): ZIO[R1, E1, B] =
+  final def run[R1 <: R, E1 >: E, A0, A1 >: A, B](sink: ZSink[R1, E1, A0, Chunk[A1], B]): ZIO[R1, E1, B] =
     chunks.run(sink)
 
   /**
