@@ -78,68 +78,17 @@ trait ZSink[-R, +E, A, +B] { self =>
     self zip that
 
   /**
-   * Operator alias for `orElse` for two sinks consuming and producing values of the same type.
+   * Operator alias for [[ZSink#orElse]] for two sinks consuming and producing values of the same type.
    */
   final def <|[R1 <: R, E1, B1 >: B](
     that: ZSink[R1, E1, A, B1]
   ): ZSink[R1, E1, A, B1] =
     (self orElse that).map(_.merge)
 
-  final def optional = ?
-
-  final def ? : ZSink[R, Nothing, A, Option[B]] =
-    new ZSink[R, Nothing, A, Option[B]] {
-      import ZSink.internal._
-
-      type State = Optional[self.State, A]
-
-      val initial = self.initial.fold(
-        _ => Optional.Fail(Chunk.empty),
-        s =>
-          if (self.cont(s)) Optional.More(s)
-          else Optional.Done(s)
-      )
-
-      def step(state: State, a: A) =
-        state match {
-          case Optional.More(s1) =>
-            self
-              .step(s1, a)
-              .fold(
-                _ => Optional.Fail(Chunk.single(a)),
-                s2 =>
-                  if (self.cont(s2)) Optional.More(s2)
-                  else Optional.Done(s2)
-              )
-
-          case s => UIO.succeed(s)
-        }
-
-      def extract(state: State) =
-        state match {
-          case Optional.Done(s) =>
-            self
-              .extract(s)
-              .fold(
-                _ => (None, Chunk.empty), { case (b, as) => (Some(b), as) }
-              )
-
-          case Optional.More(s) =>
-            self
-              .extract(s)
-              .fold(
-                _ => (None, Chunk.empty), { case (b, as) => (Some(b), as) }
-              )
-
-          case Optional.Fail(as) => UIO.succeed((None, as))
-        }
-
-      def cont(state: State) =
-        state match {
-          case Optional.More(_) => true
-          case _                => false
-        }
-    }
+  /**
+    * Operator alias for [[ZSink#optional]].
+    */
+  final def ? : ZSink[R, Nothing, A, Option[B]]= optional
 
   /**
    * A named alias for `race`.
@@ -159,6 +108,11 @@ trait ZSink[-R, +E, A, +B] { self =>
    */
   final def asError[E1](e1: E1): ZSink[R, E1, A, B] = self.mapError(_ => e1)
 
+  /**
+    * Lifts this sink to be chunked in its input. This will not
+    * improve  performance, but can be used to adapt non-chunked sinks
+    * wherever chunked sinks are required.
+    */
   final def chunked: ZSink[R, E, Chunk[A], B] =
     new ZSink[R, E, Chunk[A], B] {
       type State = (self.State, Chunk[A])
@@ -169,9 +123,15 @@ trait ZSink[-R, +E, A, +B] { self =>
       def cont(state: State)    = self.cont(state._1)
     }
 
+  /**
+    * Repeatedly runs this sink and accumulates its outputs to a list.
+    */
   final def collectAll: ZSink[R, E, A, List[B]] =
     collectAllWith[List[B]](List.empty[B])((bs, b) => b :: bs).map(_.reverse)
 
+  /**
+    * Repeatedly runs this sink until `i` outputs have been accumulated.
+    */
   final def collectAllN(i: Int): ZSink[R, E, A, List[B]] =
     new ZSink[R, E, A, List[B]] {
       case class State(s: self.State, bs: List[B], n: Int, leftover: Chunk[A], dirty: Boolean)
@@ -206,17 +166,29 @@ trait ZSink[-R, +E, A, +B] { self =>
       def cont(state: State) = state.n >= i
     }
 
+  /**
+    * Repeatedly runs this sink and accumulates the outputs into a value
+    * of type `S`.
+    */
   final def collectAllWith[S](
     z: S
   )(f: (S, B) => S): ZSink[R, E, A, S] =
     collectAllWhileWith(_ => true)(z)(f)
 
+  /**
+    * Repeatedly runs this sink and accumulates its outputs for as long
+    * as incoming values verify the predicate.
+    */
   final def collectAllWhile(
     p: A => Boolean
   ): ZSink[R, E, A, List[B]] =
     collectAllWhileWith(p)(List.empty[B])((bs, b) => b :: bs)
       .map(_.reverse)
 
+  /**
+    * Repeatedly runs this sink and accumulates its outputs into a value
+    * of type `S` for as long as the incoming values satisfy the predicate.
+    */
   final def collectAllWhileWith[S](
     p: A => Boolean
   )(z: S)(f: (S, B) => S): ZSink[R, E, A, S] =
@@ -489,6 +461,64 @@ trait ZSink[-R, +E, A, +B] { self =>
       def step(state: State, a: A) = self.step(state, a)
       def extract(state: State)    = self.extract(state).flatMap { case (b, leftover) => f(b).map((_, leftover)) }
       def cont(state: State)       = self.cont(state)
+    }
+
+  /**
+    * Returns a new sink that tries to produce the `B`, but if there is
+    * an error in stepping or extraction, produces `None`.
+    */
+  final def optional : ZSink[R, Nothing, A, Option[B]] =
+    new ZSink[R, Nothing, A, Option[B]] {
+      import ZSink.internal._
+
+      type State = Optional[self.State, A]
+
+      val initial = self.initial.fold(
+        _ => Optional.Fail(Chunk.empty),
+        s =>
+          if (self.cont(s)) Optional.More(s)
+          else Optional.Done(s)
+      )
+
+      def step(state: State, a: A) =
+        state match {
+          case Optional.More(s1) =>
+            self
+              .step(s1, a)
+              .fold(
+                _ => Optional.Fail(Chunk.single(a)),
+                s2 =>
+                  if (self.cont(s2)) Optional.More(s2)
+                  else Optional.Done(s2)
+              )
+
+          case s => UIO.succeed(s)
+        }
+
+      def extract(state: State) =
+        state match {
+          case Optional.Done(s) =>
+            self
+              .extract(s)
+              .fold(
+                _ => (None, Chunk.empty), { case (b, as) => (Some(b), as) }
+              )
+
+          case Optional.More(s) =>
+            self
+              .extract(s)
+              .fold(
+                _ => (None, Chunk.empty), { case (b, as) => (Some(b), as) }
+              )
+
+          case Optional.Fail(as) => UIO.succeed((None, as))
+        }
+
+      def cont(state: State) =
+        state match {
+          case Optional.More(_) => true
+          case _                => false
+        }
     }
 
   /**
