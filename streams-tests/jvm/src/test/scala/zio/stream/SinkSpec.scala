@@ -995,11 +995,11 @@ class SinkSpec(implicit ee: org.specs2.concurrent.ExecutionEnv) extends TestRunt
     val sink = ZSink.collectAllN[Int](3).untilOutput(_.sum > 3)
     val test = for {
       under <- sink.initial
-                .flatMap(sink.stepChunkSlice(_, Chunk(1, 2)).map(_._1))
+                .flatMap(sink.stepChunk(_, Chunk(1, 2)).map(_._1))
                 .flatMap(sink.extract)
       over <- sink.initial
-               .flatMap(sink.stepChunkSlice(_, Chunk(1, 2)).map(_._1))
-               .flatMap(sink.stepChunkSlice(_, Chunk(2, 2)).map(_._1))
+               .flatMap(sink.stepChunk(_, Chunk(1, 2)).map(_._1))
+               .flatMap(sink.stepChunk(_, Chunk(2, 2)).map(_._1))
                .flatMap(sink.extract)
     } yield (under must_=== (None -> Chunk.empty)) and (over must_=== (Some(List(1, 2, 2)) -> Chunk(2)))
 

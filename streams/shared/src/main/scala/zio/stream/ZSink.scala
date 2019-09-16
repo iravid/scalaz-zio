@@ -164,7 +164,7 @@ trait ZSink[-R, +E, A, +B] { self =>
       type State = (self.State, Chunk[A])
       val initial = self.initial.map((_, Chunk.empty))
       def step(state: State, a: Chunk[A]) =
-        self.stepChunkSlice(state._1, a).map { case (s, chunk) => (s, chunk) }
+        self.stepChunk(state._1, a).map { case (s, chunk) => (s, chunk) }
       def extract(state: State) = self.extract(state._1).map { case (b, leftover) => (b, Chunk(leftover, state._2)) }
       def cont(state: State)    = self.cont(state._1)
     }
@@ -214,7 +214,7 @@ trait ZSink[-R, +E, A, +B] { self =>
             extractResult <- self.extract(state.selfS)
             (b, as)       = extractResult
             init          <- self.initial
-            stepResult    <- self.stepChunkSlice(init, state.leftovers ++ as ++ Chunk.single(a))
+            stepResult    <- self.stepChunk(init, state.leftovers ++ as ++ Chunk.single(a))
             (s, leftover) = stepResult
           } yield State(f(state.s, b), s, state.predicateViolated, leftover, true)
         else
@@ -270,7 +270,7 @@ trait ZSink[-R, +E, A, +B] { self =>
             case (b, leftover) =>
               val that = f(b)
               that.initial.flatMap { s1 =>
-                that.stepChunkSlice(s1, leftover).map {
+                that.stepChunk(s1, leftover).map {
                   case (s2, chunk) =>
                     Right((that, s2, chunk))
                 }
@@ -288,7 +288,7 @@ trait ZSink[-R, +E, A, +B] { self =>
                   case (b, leftover) =>
                     val that = f(b)
                     that.initial.flatMap { init =>
-                      that.stepChunkSlice(init, leftover).map {
+                      that.stepChunk(init, leftover).map {
                         case (s3, chunk) =>
                           Right((that, s3, chunk))
                       }
@@ -309,7 +309,7 @@ trait ZSink[-R, +E, A, +B] { self =>
               case (b, leftover) =>
                 val that = f(b)
                 that.initial.flatMap { init =>
-                  that.stepChunkSlice(init, leftover).flatMap {
+                  that.stepChunk(init, leftover).flatMap {
                     case (s2, chunk) =>
                       that.extract(s2).map {
                         case (c, cLeftover) =>
@@ -608,18 +608,7 @@ trait ZSink[-R, +E, A, +B] { self =>
   /**
    * Steps through a chunk of iterations of the sink
    */
-  final def stepChunk(state: State, as: Chunk[A]): ZIO[R, E, State] = {
-    val len = as.length
-
-    def loop(state: State, i: Int): ZIO[R, E, State] =
-      if (i >= len) UIO.succeed(state)
-      else if (self.cont(state)) self.step(state, as(i)).flatMap(loop(_, i + 1))
-      else UIO.succeed(state)
-
-    loop(state, 0)
-  }
-
-  final def stepChunkSlice(state: State, as: Chunk[A]): ZIO[R, E, (State, Chunk[A])] = {
+  final def stepChunk(state: State, as: Chunk[A]): ZIO[R, E, (State, Chunk[A])] = {
     val len = as.length
 
     def loop(state: State, i: Int): ZIO[R, E, (State, Chunk[A])] =
@@ -856,7 +845,8 @@ trait ZSink[-R, +E, A, +B] { self =>
 
       def step(state: State, a: A) =
         if (self.cont(state._1))
-          self.step(state._1, a)
+          self
+            .step(state._1, a)
             .map((_, state._2, state._3, true))
         else
           self.extract(state._1).flatMap {
@@ -865,17 +855,18 @@ trait ZSink[-R, +E, A, +B] { self =>
               else
                 for {
                   init          <- self.initial
-                  stepResult    <- self.stepChunkSlice(init, leftover ++ Chunk.single(a))
+                  stepResult    <- self.stepChunk(init, leftover ++ Chunk.single(a))
                   (s, leftover) = stepResult
                 } yield (s, None, leftover, leftover.notEmpty)
           }
 
       def extract(state: State) =
         if (!state._4 || state._2.nonEmpty) UIO.succeed((state._2, state._3))
-        else self.extract(state._1).map {
-          case (b, leftover) =>
-            (if (f(b)) Some(b) else None, leftover ++ state._3)
-        }
+        else
+          self.extract(state._1).map {
+            case (b, leftover) =>
+              (if (f(b)) Some(b) else None, leftover ++ state._3)
+          }
 
       def cont(state: State) = state._2.isEmpty
     }
