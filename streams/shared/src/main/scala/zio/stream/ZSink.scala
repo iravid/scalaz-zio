@@ -150,6 +150,8 @@ trait ZSink[-R, +E, +A0, -A, +B] { self =>
     f: B => ZSink[R1, E1, A00, A1, C]
   )(implicit ev: A00 =:= A1, ev2: A1 =:= A00): ZSink[R1, E1, A00, A1, C] =
     new ZSink[R1, E1, A00, A1, C] {
+      val _ = ev
+
       type State = Either[self.State, (ZSink[R1, E1, A00, A1, C], Any, Chunk[A00])]
 
       val initial = self.initial.flatMap { init =>
@@ -159,7 +161,7 @@ trait ZSink[-R, +E, +A0, -A, +B] { self =>
             case (b, leftover) =>
               val that = f(b)
               that.initial.flatMap { s1 =>
-                that.stepChunk(s1, leftover.map(ev)).map {
+                that.stepChunk(s1, leftover.asInstanceOf[Chunk[A1]]).map {
                   case (s2, chunk) =>
                     Right((that, s2, chunk))
                 }
@@ -177,7 +179,7 @@ trait ZSink[-R, +E, +A0, -A, +B] { self =>
                   case (b, leftover) =>
                     val that = f(b)
                     that.initial.flatMap { init =>
-                      that.stepChunk(init, leftover.map(ev)).map {
+                      that.stepChunk(init, leftover.asInstanceOf[Chunk[A1]]).map {
                         case (s3, chunk) =>
                           Right((that, s3, chunk))
                       }
@@ -198,7 +200,7 @@ trait ZSink[-R, +E, +A0, -A, +B] { self =>
               case (b, leftover) =>
                 val that = f(b)
                 that.initial.flatMap { init =>
-                  that.stepChunk(init, leftover.map(ev)).flatMap {
+                  that.stepChunk(init, leftover.asInstanceOf[Chunk[A1]]).flatMap {
                     case (s2, chunk) =>
                       that.extract(s2).map {
                         case (c, cLeftover) =>
