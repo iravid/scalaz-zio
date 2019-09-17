@@ -3,10 +3,14 @@ id: datatypes_sink
 title:  "Sink"
 ---
 
-A `Sink[E, A, B]` is used to consume elements produced by a stream.
+A `Sink[E, A0, A, B]` is used to consume elements produced by a stream.
 You can think of this sink as a function that will consume a variable 
 amount of `A` elements (could be 0, 1, or many!), might fail with an
 error of type `E`, and will eventually yield a value of type `B`.
+
+The `A0` parameter describes the sink's *leftover* type. Sinks might
+not consume all their inputs, and unconsumed elements are returned as
+chunks of `A0` values.
 
 A `Sink` is passed to `ZStream#run` as an argument:
 
@@ -122,4 +126,17 @@ Running two sinks in parallel and returning the one that completed earlier:
 
 ```scala mdoc:silent
 Sink.foldLeft[Int, Int](0)(_ + _).race(Sink.identity[Int])
+```
+
+For transforming given input into some sink we can use `contramap` which
+is `C => A` where `C` is input type and `A` is sink elements type:
+
+```scala mdoc:silent
+Sink.collectAll[String].contramap[Int](_.toString + "id")
+```
+
+A `dimap` is an extended `contramap` that additionally transforms sink's output:
+
+```scala mdoc:silent
+Sink.collectAll[String].dimap[Int, List[String]](_.toString + "id")(_.take(10))
 ```
