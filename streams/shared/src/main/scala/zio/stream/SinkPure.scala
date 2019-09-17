@@ -42,15 +42,6 @@ private[stream] trait SinkPure[+E, +A0, -A, +B] extends ZSink[Any, E, A0, A, B] 
 
   def extractPure(state: State): Either[E, (B, Chunk[A0])]
 
-  override def filter[A1 <: A](f: A1 => Boolean): SinkPure[E, A0, A1, B] =
-    new SinkPure[E, A0, A1, B] {
-      type State = self.State
-      val initialPure                   = self.initialPure
-      def stepPure(state: State, a: A1) = if (f(a)) self.stepPure(state, a) else state
-      def extractPure(state: State)     = self.extractPure(state)
-      def cont(state: State)            = self.cont(state)
-    }
-
   def initial = IO.succeed(initialPure)
 
   def initialPure: State
@@ -75,7 +66,9 @@ private[stream] trait SinkPure[+E, +A0, -A, +B] extends ZSink[Any, E, A0, A, B] 
 
   override def step(s: State, a: A) = IO.succeed(stepPure(s, a))
 
-  final def stepChunkPure[A00 >: A0, A1 <: A](state: State, as: Chunk[A1])(implicit ev: A1 =:= A00): (State, Chunk[A00]) = {
+  final def stepChunkPure[A00 >: A0, A1 <: A](state: State, as: Chunk[A1])(
+    implicit ev: A1 =:= A00
+  ): (State, Chunk[A00]) = {
     val len = as.length
 
     def loop(state: State, i: Int): (State, Chunk[A00]) =

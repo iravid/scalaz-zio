@@ -115,7 +115,7 @@ One of them already appeared in previous section - `collectAll` in `pull1`.
 Sink that after collecting input - filters it:
 
 ```scala mdoc:silent
-Sink.collectAll[Int].filter[Int](_ > 100)
+Sink.collectAll[Int].filter(_ > 100)
 ```
 
 Running two sinks in parallel and returning the one that completed earlier:
