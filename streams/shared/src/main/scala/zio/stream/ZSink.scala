@@ -669,7 +669,7 @@ trait ZSink[-R, +E, +A0, -A, +B] { self =>
 
 object ZSink extends ZSinkPlatformSpecific {
 
-  implicit class InputRemainderOps[R, E, A, B](val sink: ZSink[R, E, A, A, B]) {
+  implicit class InputRemainderOps[R, E, A, B](private val sink: ZSink[R, E, A, A, B]) {
 
     /**
      * Returns a new sink that tries to produce the `B`, but if there is an
@@ -913,7 +913,7 @@ object ZSink extends ZSinkPlatformSpecific {
 
   }
 
-  implicit class NoRemainderOps[R, E, A, B](val sink: ZSink[R, E, Nothing, A, B]) extends AnyVal {
+  implicit class NoRemainderOps[R, E, A, B](private val sink: ZSink[R, E, Nothing, A, B]) extends AnyVal {
     private def widen: ZSink[R, E, A, A, B] = sink
 
     /**
