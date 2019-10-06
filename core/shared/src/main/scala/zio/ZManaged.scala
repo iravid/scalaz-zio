@@ -1236,6 +1236,26 @@ object ZManaged {
   final def sandbox[R, E, A](v: ZManaged[R, E, A]): ZManaged[R, Cause[E], A] =
     v.sandbox
 
+  final def scope: ZManaged[Any, Nothing, Open] =
+    ZManaged
+      .makeExit(Ref.make[List[Exit[_, _] => UIO[_]]](Nil)) { (fins, e) =>
+        fins.get.flatMap(ZIO.foreach_(_)(fin => fin(e).run))
+      }
+      .map(new Open(_))
+
+  class Open(finalizers: Ref[List[Exit[_, _] => UIO[_]]]) {
+    def apply[R, E, A](managed: ZManaged[R, E, A]): ZIO[R, E, (URIO[R, _], A)] =
+      ZIO.uninterruptibleMask { restore =>
+        for {
+          r           <- ZIO.environment[R]
+          reservation <- managed.withEarlyRelease.reserve
+          _           <- finalizers.update(((e: Exit[_, _]) => reservation.release(e).provide(r)) :: _)
+          a           <- restore(reservation.acquire)
+        } yield a
+
+      }
+  }
+
   /**
    *  Alias for [[ZManaged.collectAll]]
    */
